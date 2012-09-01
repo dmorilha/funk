@@ -1,23 +1,21 @@
-/*
- * TODO
- * - fix nested levels
- */
-
 #include <stdio.h>
+#include <stdlib.h>
+
 #define KSIZE 1024
+#define KSIZE64 65536
 
 #define STATE_NORMAL 0x0
-
 #define STATE_CURLY_BRACKET 0x1
 #define STATE_ROUND_BRACKET 0x2
 #define STATE_SQUARE_BRACKET 0x3
 
-#define STATE_DOUBLE_QUOTE 0x100
-#define STATE_SINGLE_QUOTE 0x200
+#define STATE_DOUBLE_QUOTE 0x1
+#define STATE_SINGLE_QUOTE 0x2
+#define STATE_SLASH 0x3
+#define STATE_BACKSLASH 0x4
+#define STATE_PRINTING 0x8
 
-#define STATE_BACKSLASH 0x400
-
-#define STATE_PRINTING 0x10000
+#define DEBUG 0
 
 typedef struct {
 	const char * function;
@@ -27,7 +25,7 @@ typedef struct {
 
 
 typedef struct {
-	const char * b;
+	int b;
 	int argument;
 	int state;
 	int counter;
@@ -36,6 +34,9 @@ typedef struct {
 
 int main(const int argc, const char * * argv) {
 
+	char * a = NULL;
+	char * b = NULL;
+
 	char buffer[KSIZE + 1] = {0};
 	char * c;
 
@@ -43,13 +44,14 @@ int main(const int argc, const char * * argv) {
 	int patternLength = 0;
 
 	ParserInfo stack[KSIZE];
-	ParserInfo * info;
+	ParserInfo * info = NULL;
 	int stackLength = 0;
 
 	int i;
 	int j;
 
 	int skip;
+	int state = 0;
 
 	for (i = 1, skip = 0; i + 1 < argc; i += 2, skip = 0) {
 
@@ -79,132 +81,108 @@ int main(const int argc, const char * * argv) {
 
 		for (c = buffer; *c != 0; c++) {
 
-			if (stackLength > 0) {
-				info = &stack[stackLength - 1];
-				if ((info->state & 0xFFFF) == STATE_NORMAL) {
+			if (b) {
+				*b++ = *c;
+				i = b - a;
 
-					if (*c == ',') {
-						if (info->argument == info->pattern->argument) {
-							info->state &= (~STATE_PRINTING);
-							fputc('\n', stdout);
-						}
+				if (i && i % KSIZE64 == 0) {
 
-					} else if (*c == ')') {
-						if (info->argument == info->pattern->argument) {
-							info->state &= (~STATE_PRINTING);
-							fputc('\n', stdout);
-						}
-
-						stackLength--;
-						break;
-					}
-				}
-
-				if (info->state & STATE_PRINTING) {
-					fputc(*c, stdout);
-				}
-
-				if (info->state & (0xFF00)) {
-					switch (info->state & (0xFF00)) {
-
-					case STATE_BACKSLASH:
-						info->state = info->state & (~STATE_BACKSLASH);
-						break;
-
-					case STATE_DOUBLE_QUOTE:
-						if (*c == '\\') {
-							info->state |= STATE_BACKSLASH;
-
-						} else if (*c == '"') {
-							info->state = info->state & (~STATE_DOUBLE_QUOTE);
-						}
-
-						break;
-
-					case STATE_SINGLE_QUOTE:
-						if (*c == '\\') {
-							info->state |= STATE_BACKSLASH;
-
-						} else if (*c == '\'') {
-							info->state = info->state & (~STATE_SINGLE_QUOTE);
-						}
-
-						break;
+					if (DEBUG) {
+						fputs("resizing\n", stderr);
 					}
 
-				} else if (*c == '"') {
-					info->state |= STATE_DOUBLE_QUOTE;
-
-				} else if (*c == '\'') {
-					info->state |= STATE_SINGLE_QUOTE;
-
-				} else {
-					switch (info->state & 0xFFFF) {
-					case STATE_ROUND_BRACKET:
-						if (*c == '(') {
-							info->counter++;
-
-						} else if (*c == ')') {
-							info->counter--;
-						}
-
-						break;
-
-					case STATE_SQUARE_BRACKET:
-						if (*c == '[') {
-							info->counter++;
-
-						} else if (*c == ']') {
-							info->counter--;
-						}
-
-						break;
-
-					case STATE_CURLY_BRACKET:
-						if (*c == '{') {
-							info->counter++;
-
-						} else if (*c == '}') {
-							info->counter--;
-						}
-
-						break;
-
-					case STATE_NORMAL:
-						switch (*c) {
-						case '{':
-							info->state |= STATE_CURLY_BRACKET;
-							info->counter = 1;
-							break;
-
-						case '(':
-							info->state |= STATE_ROUND_BRACKET;
-							info->counter = 1;
-							break;
-
-						case '[':
-							info->state |= STATE_SQUARE_BRACKET;
-							info->counter = 1;
-							break;
-
-						case ',':
-							info->argument++;
-
-							if (info->argument == info->pattern->argument) {
-								info->state |= STATE_PRINTING;
-							}
-
-							break;
-						}
-					}
-				}
-
-				if (info->counter < 1) {
-					info->state = (info->state & (~0xFF)) | STATE_NORMAL;
+					a = realloc(a, (i + KSIZE64) * sizeof(char));
+					b = a + i;
 				}
 			}
 
-			if (*c == '(') {
+			if (state & STATE_BACKSLASH) {
+				state &= ~STATE_BACKSLASH;
+				continue;
+			}
+
+			switch (*c) {
+			case '\\':
+				if (state & (STATE_SLASH | STATE_SINGLE_QUOTE | STATE_DOUBLE_QUOTE)) {
+					state |= STATE_BACKSLASH;
+				}
+
+				break;
+
+			case '/':
+				if (state & STATE_SLASH) {
+					state &= ~STATE_SLASH;
+
+				} else {
+					state |= STATE_SLASH;
+				}
+
+				break;
+
+			case '\'':
+				if (state & STATE_SINGLE_QUOTE) {
+					state &= ~STATE_SINGLE_QUOTE;
+
+				} else {
+					state |= STATE_SINGLE_QUOTE;
+				}
+
+				break;
+
+			case '"':
+				if (state & STATE_DOUBLE_QUOTE) {
+					state &= ~STATE_DOUBLE_QUOTE;
+
+				} else {
+					state |= STATE_DOUBLE_QUOTE;
+				}
+
+				break;
+
+			case ',':
+				if (info && info->state == STATE_NORMAL) {
+					info->argument++;
+
+					if (info->argument == info->pattern->argument) {
+						if (!b) {
+							if (DEBUG) {
+								fputs("creating buffer\n", stderr);
+							}
+
+							b = a = malloc(sizeof(char) * KSIZE64);
+						}
+
+						info->b = b - a;
+
+					} else if (info->argument == info->pattern->argument + 1) {
+						*(b - 1) = 0;
+						fputs(a + info->b, stdout);
+						fputc('\n', stdout);
+
+						if (info->b) {
+							*(b - 1) = ',';
+
+						} else {
+							free(a);
+							b = a = NULL;
+						}
+					}
+				}
+				break;
+
+			case '(':
+				if (info) {
+					switch (info->state) {
+					case STATE_ROUND_BRACKET:
+						info->counter++;
+
+					case STATE_NORMAL:
+						info->counter = 1;
+						info->state = STATE_ROUND_BRACKET;
+						break;
+					}
+				}
+
 				if (stackLength == KSIZE) {
 					fputs("stack reached limit, ignoring new entries.", stderr);
 
@@ -212,29 +190,112 @@ int main(const int argc, const char * * argv) {
 					for (i = 0; i < patternLength; i++) {
 						if (!(*(patterns[i].f))) {
 							stack[stackLength].argument = 1;
-							stack[stackLength].b = NULL;
+							stack[stackLength].b = 0;
 							stack[stackLength].state = STATE_NORMAL;
 							stack[stackLength].counter = 0;
 							stack[stackLength].pattern = &patterns[i];
 
 							if (patterns[i].argument == 1) {
-								stack[stackLength].state |= STATE_PRINTING;
+								if (!b) {
+									if (DEBUG) {
+										fputs("creating buffer\n", stderr);
+									}
+
+									b = a = malloc(sizeof(char) * KSIZE64);
+								}
+
+								stack[stackLength].b = b - a;
 							}
 
-							stackLength++;
+							info = &stack[stackLength++];
 						}
 					}
 				}
-			}
+				break;
 
-			for (i = 0; i < patternLength; i++) {
-				if (*c == *(patterns[i].f)) {
-					patterns[i].f++;
-				} else {
-					patterns[i].f = patterns[i].function;
+			case ')':
+				if (info) {
+
+					switch (info->state) {
+					case STATE_NORMAL:
+						if (info->argument == info->pattern->argument) {
+							*(b - 1) = 0;
+							fputs(a + info->b, stdout);
+							fputc('\n', stdout);
+
+							if (info->b) {
+								*(b - 1) = ')';
+
+							} else {
+								free(a);
+								b = a = NULL;
+							}
+						}
+
+						info = (--stackLength) ? &stack[stackLength - 1] : NULL;
+						break;
+
+					case STATE_ROUND_BRACKET:
+						if ( ! --info->counter) {
+							info->state = STATE_NORMAL;
+						}
+						break;
+					}
 				}
-			}
 
+				break;
+
+			case '[':
+				if (info) {
+					switch (info->state) {
+					case STATE_SQUARE_BRACKET:
+						info->counter++;
+
+					case STATE_NORMAL:
+						info->counter = 1;
+						info->state = STATE_SQUARE_BRACKET;
+						break;
+					}
+				}
+				break;
+
+			case ']':
+				if (info && info->state == STATE_SQUARE_BRACKET && ! --info->counter) {
+					info->state = STATE_NORMAL;
+				}
+				break;
+
+			case '{':
+				if (info) {
+					switch (info->state) {
+					case STATE_CURLY_BRACKET:
+						info->counter++;
+
+					case STATE_NORMAL:
+						info->counter = 1;
+						info->state = STATE_CURLY_BRACKET;
+						break;
+					}
+				}
+				break;
+
+			case '}':
+				if (info && info->state == STATE_CURLY_BRACKET && ! --info->counter) {
+					info->state = STATE_NORMAL;
+				}
+				break;
+
+			default:
+				//TODO: that's still broken.
+				for (i = 0; i < patternLength; i++) {
+					if (*c == *(patterns[i].f)) {
+						patterns[i].f++;
+					} else {
+						patterns[i].f = patterns[i].function;
+					}
+				}
+				break;
+			}
 		}
 	}
 
