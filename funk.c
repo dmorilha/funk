@@ -182,6 +182,7 @@ int main(const int argc, const char * * argv) {
 					switch (info->state) {
 					case STATE_ROUND_BRACKET:
 						info->counter++;
+						break;
 
 					case STATE_NORMAL:
 						info->counter = 1;
@@ -257,6 +258,7 @@ int main(const int argc, const char * * argv) {
 					switch (info->state) {
 					case STATE_SQUARE_BRACKET:
 						info->counter++;
+						break;
 
 					case STATE_NORMAL:
 						info->counter = 1;
@@ -277,6 +279,7 @@ int main(const int argc, const char * * argv) {
 					switch (info->state) {
 					case STATE_CURLY_BRACKET:
 						info->counter++;
+						break;
 
 					case STATE_NORMAL:
 						info->counter = 1;
