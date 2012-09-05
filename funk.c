@@ -1,3 +1,10 @@
+/*
+ * TODO:
+ *  - make sure we support utf-8 properly.
+ *  - consider comment blocks.
+ *  - fix the pattern look-up problem listed bellow.
+ */
+
 #include <stdio.h>
 #include <stdlib.h>
 
